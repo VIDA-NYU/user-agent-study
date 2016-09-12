@@ -258,7 +258,7 @@ def custom_recrawl(status_file, supplement_status_file, html_dir, status_dir, ag
 if __name__=="__main__":
     if len(sys.argv) < 5:
         print "Wrong argument"
-        print "[url_file] [html_output_dir] [status_output_file] [agent] [crawlmode] [useTor] [saveHTML] [supplement_status_file]"
+        print "[url_file] [agent] [crawlmode] [useTor] [supplement_status_file]"
         print "agent: [google, browser, ache, nutch, bing, empty]"
         print "crawlmode: [first, recrawl, custom_recrawl]; default: first"
         print "useTor: [yes, no]; default: no"
@@ -266,28 +266,27 @@ if __name__=="__main__":
         sys.exit(0)
 
     #READING PARAMETERS
+    agents = ['google', 'browser', 'ache', 'nutch', 'bing', 'empty']
     in_file = sys.argv[1]     #input
-    html_dir = sys.argv[2]    #output
-    status_file = sys.argv[3] #output
-    agent = sys.argv[4]
-    if len(sys.argv) >= 6:
-        crawl_mode = sys.argv[5]
+    agent = sys.argv[2]
+    if agent not in Config.HEADERS:
+        print "user-agent is wrong, it must be " + str(Config.HEADERS.keys())
+        sys.exit(0)
+
+    html_dir = 'html_' + agent
+    status_file = 'status_' + agent + ".json"
+    if len(sys.argv) >= 4:
+        crawl_mode = sys.argv[3]
     else:
         crawl_mode = "first" #default
 
-    if len(sys.argv) >=7: 
-        if sys.argv[6] == "yes":
+    if len(sys.argv) >= 5: 
+        if sys.argv[4] == "yes":
             Config.USE_TOR = True
 
-    if len(sys.argv) >= 8:
-        if sys.argv[7] == "yes":
-            Config.SAVE_HTML = True
+    Config.SAVE_HTML = True #Always saving the html
 
-    if agent not in Config.HEADERS:
-        print "agent is wrong, it must be " + str(Config.HEADERS.keys())
-        sys.exit(0)
-
-    status_dir = "status_temp"#temporary directory, it will be deleted 
+    status_dir = "status_temp_" + agent#temporary directory, it will be deleted 
     if not os.path.exists(html_dir):
         os.makedirs(html_dir)
     
@@ -304,7 +303,7 @@ if __name__=="__main__":
         merge(status_dir, status_file) #Remove all exception in status_file, update all files in status_dir to status_file. status_file is both input and output
 
     elif crawl_mode == "custom_recrawl":
-        supplement_status_file = sys.argv[8]
+        supplement_status_file = sys.argv[6]
         custom_recrawl(status_file, supplement_status_file, html_dir, status_dir, agent)
         merge(status_dir, status_file) #Remove all exception in status_file, update all files in status_dir to status_file. status_file is both input and output
 

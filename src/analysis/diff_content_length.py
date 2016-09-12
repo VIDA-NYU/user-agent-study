@@ -2,69 +2,112 @@
 
 '''
 import sys
+import json
+import traceback
+import os
 
-def diff_length(infile, outfile, agents):
+def diff_length(urls_200, ual, outfile):
+    '''
+    Return:
+        - outfile: a csv file whose the headers are:
+        [url] [length difference = max_len -min_len] [min_agent] [min_len] [max_agent] [max_len]
+    '''
+    print "Computing the content length difference"
     out = open(outfile, "w")
-    with open(infile) as lines:
-        for line in lines:
-            values = line.strip("\n").split("\t")
-            url = values[0]
-            topic = values[1]
-            _max = _min = int(values[2]) #Default is first value (~first agent)
-            idx = 0
-            max_idx = min_idx = 0 #Default is first agent (~first value)
-            for v in values[2:]:
-                length = int(v)
-                if length > _max:
-                    _max = length
-                    max_idx = idx
-                if length < _min:
-                    _min = length
-                    min_idx = idx
-                idx += 1
-            if (min_idx != -1) & (max_idx != -1):
-                d = _max - _min
-                if _max == 0:
-                    continue
-                ratio = d/float(_max)
+    for url in urls_200:
+        try:
+            max_len = 0
+            min_len = 999999
+            max_agent= None
+            min_agent = None
+            agent2len = ual[url]
+            for agent in agent2len:
+                if agent2len[agent] > max_len:
+                    max_len = agent2len[agent]
+                    max_agent = agent
+                if agent2len[agent] < min_len:
+                    min_len = agent2len[agent]
+                    min_agent = agent
+            if max_len > min_len:
+                ratio = (max_len - min_len)/float(max_len)
                 ratio = '{0:.5f}'.format(ratio)
-                out.write(url + "\t" + topic + "\t" + str(d) + "\t" + str(ratio) + "\t" + agents[min_idx] + "\t" + str(_min) + "\t" + agents[max_idx] + "\t" + str(_max) + "\n")
+                out.write(url + "\t" + str(max_len-min_len) + \
+                                "\t" + min_agent + \
+                                "\t" + str(min_len) + \
+                                "\t" + max_agent + \
+                                "\t" + str(max_len) + "\n")
+                
+        except:
+            traceback.print_exc()
+            continue
+
     out.close()
 
-def stat(filenames, outfile):
+def get_urls_200(status_files):
     '''
+    Return all urls that respond 200 to all user-agents
+    '''
+    print "Getting urls that respond 200 to all user-agents"
+    counter = {} #counting number of successful requests of each url
+    N = len(status_files) #number of user-agents
+    for agent in status_files:
+        status_file = status_files[agent]
+        print "Loading " + status_file
+        with open(status_file) as lines:
+            for line in lines:
+                try:
+                    obj = json.loads(line)
+                    if 'status_code' in obj:
+                        status_code = obj['status_code']
+                        if status_code == '200':
+                            url = obj['url']
+                            if url in counter:
+                                counter[url] += 1
+                            else:
+		                        counter[url] = 1
+                except:
+                    print obj.keys()
+                    traceback.print_exc()
+                    continue
+    urls = set([])
+    for url in counter:
+    	if counter[url] == N:
+			urls.add(url) 
+    print "Number of urls: " + str(len(urls))
+    return urls
+
+def read_content_length_from_status(statusfiles, outfile):
+    '''
+    Get content-length of crawled data via response header
     Args: 
-        - filenames: A list of status file names
+        - statusfiles: mapping between user-agent and status files 
     Returns:
         - outfile: output file in csv format, each line = [url] [subtopic] [length_1] ... [length_n]
     '''
     m = {} #url maps to list of content length
     code = {} # url maps to list of status code
-    topic = {}
-    for f in filenames:
+    #topic = {}
+    for f in statusfiles:
         print f
         with open(f) as lines:
             for line in lines:
-                values = line.strip("\n").split("\t")
-                url = values[0]
-                status_code = values[2]
-                length = values[3]
-                if length == "None":
-                    continue
                 try:
-                    length = int(length)
+                    obj = json.loads(line)
+                    url = obj['url']
+                    status_code = obj
+                    length = int(obj['header']['content-length'])
+                    #topic = obj['topic']
+                    if status_code == "200":
+                        #topic[url] = t
+                        if url in m:
+                            m[url].append(length)
+                            code[url] += 1
+                        else:
+                            m[url] = [length]
+                            code[url] = 1
                 except:
-                    print length
+                    traceback.print_exc()
                     continue
-                t = values[4]
-                if status_code == "200":
-                    topic[url] = t
-                    if url in m:
-                        m[url].append(length)
-                        code[url] += 1
-                    else:
-                        m[url] = [length]
-                        code[url] = 1
 
     urls = set()#url that return 200 to all user-agents
     n = len(filenames)
@@ -82,22 +125,53 @@ def stat(filenames, outfile):
                     l_str = ""
                     for s in l:
                         l_str += "\t" + str(s)
-                    out.write(url + "\t" + topic[url] + l_str + "\n")
+                    #out.write(url + "\t" + topic[url] + l_str + "\n")
+                    out.write(url + "\t" +  l_str + "\n")
                     break
   
     out.close()
 
 
+def read_content_length_from_html(htmldirs):
+    '''
+    Return: 
+        - ual: mapping between url, user-agent and content-length
+            {url:{agent:length}}
+    '''
+    print "Reading html files"
+    ual = {} 
+    for agent in htmldirs:
+        htmldir = htmldirs[agent]
+        print "Loading " + htmldir
+        files = os.listdir(htmldir)
+        for f in files:
+            f = htmldir + "/" + f
+            with open(f) as lines:
+                for line in lines:
+                    try:
+                        obj = json.loads(line)
+                        length = len(obj['text'])                    
+                        url = obj['url']
+                        if url in ual:
+                            ual[url][agent] = length
+                        else:
+                            ual[url] = {agent:length}
+                    except:
+                        traceback.print_exc()
+                        continue
+    print 'Finished reading content length from html. Number of urls: ' + str(len(ual))
+    return ual
+
 if __name__=="__main__":
     agents = ["ache", "bing", "google", "nutch", "empty", "browser"]
-    filenames = [] #list of status files
+    status_files = {}
+    html_dirs = {}
     path = sys.argv[1]
+    outfile = sys.argv[2]
     for agent in agents:
-        filename = path + "/" + agent + ".json.csv"
-        filenames.append(filename)
-    file1 = "urls_200_length.csv" #contains urls that respond 200 status to all user-agents
-
-    #stat(filenames, file1)
-
-    file2 = "diff_length.csv"
-    diff_length(file1, file2, agents)
+        status_files[agent] = path + "/status_" + agent + ".json"
+        html_dirs[agent] = path + "/html_" + agent
+    
+    ual = read_content_length_from_html(html_dirs)
+    urls_200 = get_urls_200(status_files)
+    diff_length(urls_200, ual, outfile)

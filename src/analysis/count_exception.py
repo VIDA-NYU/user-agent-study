@@ -8,19 +8,19 @@ Note: Input must be csv and follows this format:
 [url] [user-agent] [status_code|None] [content_length|None] [subtopic] [exception|None]
 '''
 import sys
+import json
 
 def count(filenames):
     for f in filenames:
         count = {}
         with open(f) as lines:
             for line in lines:
-                values = line.strip("\n").split("\t")
-                ex = values[5]
-                if ex != "None":
-                    if ex in count:
-                        count[ex] += 1
+                obj = json.loads(line)
+                if 'exception' in obj:
+                    if obj['exception'] in count:
+                        count[obj['exception']] += 1
                     else:
-                        count[ex] = 1
+                        count[obj['exception']] = 1
         output = f
         for key in count:
             output += "\t" + key + ":" + str(count[key])
